@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>寶可夢冠軍屬性對抗工具 V4（修正版）</title>
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --card-bg: #ffffff;
+            --primary-blue: #2a75bb;
+            --primary-blue-light: #eaf3ff;
+            --text-main: #333;
+            --text-sub: #666;
+            --border-color: #e8ebf0;
+            --shadow-main: 0 4px 15px rgba(0,0,0,0.08);
+            --shadow-soft: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            font-family: "PingFang TC", "Microsoft JhengHei", sans-serif;
+            background-color: var(--bg-color);
+            margin: 20px;
+            line-height: 1.6;
+            color: var(--text-main);
+        }
+        h2 { color: #333; border-left: 5px solid var(--primary-blue); padding-left: 10px; margin: 0 0 14px; }
+        h3 { margin: 0; }
+
+						  
+        .analysis-layout {
+            --team1-width: 1fr;
+            --team2-width: 1fr;
+            display: grid;
+            grid-template-columns: minmax(0, var(--team1-width)) 5px minmax(0, var(--team2-width));
+            grid-template-areas: "team1 splitter team2";
+            column-gap: 0;
+            row-gap: 18px;
+            margin-bottom: 30px;
+            align-items: start;
+        }
+
+        .analysis-panel {
+            background: var(--card-bg);
+            border-radius: 14px;
+            box-shadow: var(--shadow-main);
+            border: 2px solid transparent;
+            overflow: hidden;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+            cursor: pointer;
+        }
+        .analysis-panel:hover { border-color: #d7e8ff; }
+        .analysis-panel.active { border-color: var(--primary-blue); box-shadow: 0 8px 24px rgba(42, 117, 187, 0.18); }
+        .analysis-panel.team1 { grid-area: team1; }
+        .analysis-panel.team2 { grid-area: team2; }
+        .analysis-panel.list {
+            grid-column: 1 / -1;
+            margin-top: 16px;
+        }
+        
+        .team-resizer {
+            grid-area: splitter;
+            align-self: stretch;
+            position: relative;
+            cursor: col-resize;
+            background: #cfd6df;
+            z-index: 5;
+        }
+        .team-resizer::before {
+            content: "";
+            position: absolute;
+            left: 50%; top: 0; bottom: 0; width: 5px;
+            transform: translateX(-50%);
+            background: #cfd6df;
+        }
+        .team-resizer:hover::before, .team-resizer.dragging::before {
+            background: #2a75bb;
+            box-shadow: 0 0 0 2px rgba(42, 117, 187, 0.12);
+        }
+
+        .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 18px; background: #f7f9fc; border-bottom: 1px solid var(--border-color); }
+        .analysis-panel.active .panel-header { background: var(--primary-blue-light); }
+        .panel-body { min-height: 120px; padding: 10px 18px; }
+        .panel-empty { padding: 26px 8px; text-align: center; color: #9aa3ad; border: 2px dashed #d9e1ea; border-radius: 12px; background: #fafbfd; }
+        .analysis-panel.collapsed .panel-body {
+            display: none;
+            min-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+        .analysis-panel.collapsed {
+            overflow: hidden;
+        }
+        .panel-title-button {
+            appearance: none;
+            border: none;
+            background: transparent;
+            padding: 0;
+            margin: 0;
+            font: inherit;
+            color: inherit;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .panel-title-button::after {
+            content: "▾";
+            font-size: 14px;
+            color: #7f8a96;
+            transition: transform 0.18s ease;
+        }
+        .analysis-panel.collapsed .panel-title-button::after {
+            transform: rotate(-90deg);
+        }
+
+        .selected-row {
+            display: grid;
+            grid-template-columns: 72px minmax(92px, max-content) minmax(0, 1fr) 32px;
+            align-items: start;
+            gap: 0px;
+            padding: 4px 0;
+        }
+        .selected-row img { width: 58px; height: 58px; object-fit: contain; }
+        .pokemon-name { font-size: 18px; font-weight: 700; }
+		
+		.pool-filter-toolbar {
+            display: grid;			
+		}
+		
+        /* 屬性篩選按鈕 CSS - 窄版置中 */
+        .type-filter-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            margin-bottom: 18px;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .type-filter-btn {
+            width: 85px;
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 800;
+            padding: 10px 0;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: all 0.15s ease;
+            text-align: center;
+        }
+        .type-filter-btn.active { outline: 3px solid #222; outline-offset: 1px; }
+
+        .eff-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        /* 修改後的屬性倍率區塊樣式 */
+		.eff-box { 
+			display: flex; 
+			flex-direction: column; 
+			align-items: center; 
+			padding: 5px 4px; 
+			border-radius: 8px; 
+			min-width: 70px; 
+			border: 1px solid rgba(0,0,0,0.05); 
+		}
+		/* 依照您的需求設定背景色 */
+		.eff-box.bg-4x { background-color: #fdeaea; }   /* 較深的淺紅 */
+		.eff-box.bg-2x { background-color: #fef3f2; }   /* 淺紅 */
+		.eff-box.bg-05x { background-color: #f5fbf5; }  /* 淺綠 */
+		.eff-box.bg-025x { background-color: #edf8ed; } /* 較深的淺綠 */
+		.eff-box.bg-0x { background-color: #f0f0f0; }   /* 灰色 */
+        .eff-label { font-size: 11px; font-weight: 800; margin-bottom: 4px; }
+        .eff-content { display: flex; gap: 2px; flex-wrap: wrap; justify-content: center; }
+
+        .type-badge { padding: 3px 8px; border-radius: 20px; color: white; font-size: 11px; margin: 2px; display: inline-block; cursor: pointer; border: 2px solid transparent; transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease; transform-origin: center center; }
+        .type-badge.type-highlighted { transform: scale(1.1); border-color: #111; box-shadow: 0 0 0 1px rgba(0,0,0,0.08); }
+
+        #pool-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(85px, 1fr)); gap: 0px; background: #fff; padding: 20px; border-radius: 12px; box-shadow: var(--shadow-soft); }
+        .pool-item { text-align: center; cursor: pointer; padding: 8px; border-radius: 10px; transition: 0.2s; border: 1px solid transparent; }
+        .pool-item:hover { background: #eef6ff; transform: translateY(-3px); border-color: var(--primary-blue); }
+        .pool-item img { width: 56px; height: 56px; }
+
+        /* 顏色定義 */
+        .type-normal { background: #A8A77A; } .type-fire { background: #EE8130; } .type-water { background: #6390F0; }
+        .type-electric { background: #F7D02C; } .type-grass { background: #7AC74C; } .type-ice { background: #96D9D6; }
+        .type-fighting { background: #C22E28; } .type-poison { background: #A33EA1; } .type-ground { background: #E2BF65; }
+        .type-flying { background: #A98FF3; } .type-psychic { background: #F95587; } .type-bug { background: #A6B91A; }
+        .type-rock { background: #B6A136; } .type-ghost { background: #735797; } .type-dragon { background: #6F35FC; }
+        .type-steel { background: #B7B7CE; } .type-dark { background: #705746; } .type-fairy { background: #D685AD; }
+
+        .btn-panel-action { padding: 6px 12px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; font-size: 12px; background: #fff; }
+        .btn-panel-action.btn-danger:hover { background: #fff1f0; color: #ff4d4f; border-color: #ff4d4f; }
+        .btn-filter-action { padding: 10px 20px; border-radius: 20px; border: none; background: #7d7d7d; color: #fff; cursor: pointer; margin: 0 5px; }
+        .filter-controls-row {
+            text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .batch-add-input {
+            width: 78px;
+            padding: 9px 10px;
+            border-radius: 12px;
+            border: 1px solid #cfd6df;
+            font-size: 14px;
+            text-align: center;
+            background: #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="analysis-layout" id="analysis-layout">
+        <div class="analysis-panel team1 active" data-target="team1" onclick="setActiveTarget('team1')">
+            <div class="panel-header"><h3>隊伍1</h3><span id="team1-meta">0 / 6</span><button class="btn-panel-action btn-danger" onclick="event.stopPropagation(); clearSection('team1')">清除</button></div>
+            <div class="panel-body" id="team1-container"></div>
+        </div>
+        <div class="team-resizer" id="team-resizer"></div>
+        <div class="analysis-panel team2" data-target="team2" onclick="setActiveTarget('team2')">
+            <div class="panel-header"><h3>隊伍2</h3><span id="team2-meta">0 / 6</span><button class="btn-panel-action btn-danger" onclick="event.stopPropagation(); clearSection('team2')">清除</button></div>
+            <div class="panel-body" id="team2-container"></div>
+        </div>
+    </div>
+
+    <div class="analysis-panel list" data-target="list" onclick="setActiveTarget('list')">
+        <div class="panel-header"><button class="panel-title-button" onclick="event.stopPropagation(); togglePanelCollapse('list')"><h3>列表</h3></button><span id="list-meta">0</span><button class="btn-panel-action btn-danger" onclick="event.stopPropagation(); clearSection('list')">清除</button></div>
+        <div class="panel-body" id="list-container"></div>
+    </div>
+
+
+    <div class="pool-filter-toolbar">
+        <div class="type-filter-grid" id="type-filter-container"></div>
+        <div class="filter-controls-row">
+            <button class="btn-filter-action" onclick="clearHighlightedTypes()">清除高光</button>
+            <button class="btn-filter-action" onclick="resetTypeFilters()">重置篩選</button>
+            <input id="batch-add-count" class="batch-add-input" type="number" min="1" value="50">
+            <button class="btn-filter-action" onclick="addSequentialToList()">依序新增X隻寶可夢到列表</button>
+        </div>
+    </div>
+
+    <div id="pool-container"></div>
+
+<script>
+// 此處 pokemonData 使用你原本檔案的清單內容
+const pokemonData = [
+  { "image_id": "sneasler", "name": "大狃拉", "types": ["格鬥", "毒"] },
+  { "image_id": "incineroar", "name": "熾焰咆哮虎", "types": ["火", "惡"] },
+  { "image_id": "kingambit", "name": "仆斬將軍", "types": ["惡", "鋼"] },
+  { "image_id": "garchomp", "name": "烈咬陸鯊", "types": ["龍", "地面"] },
+  { "image_id": "sinistcha", "name": "來悲粗茶", "types": ["草", "幽靈"] },
+  { "image_id": "basculegion", "name": "幽尾玄魚", "types": ["水", "幽靈"] },
+  { "image_id": "floette-eternal", "name": "花葉蒂（永恆之花）", "types": ["妖精"] },
+  { "image_id": "whimsicott", "name": "風妖精", "types": ["草", "妖精"] },
+  { "image_id": "aerodactyl", "name": "化石翼龍", "types": ["岩石", "飛行"] },
+  { "image_id": "rotom-wash", "name": "洛托姆（清洗）", "types": ["電", "水"] },
+  { "image_id": "dragonite", "name": "快龍", "types": ["龍", "飛行"] },
+  { "image_id": "charizard", "name": "噴火龍", "types": ["火", "飛行"] },
+  { "image_id": "tyranitar", "name": "班基拉斯", "types": ["岩石", "惡"] },
+  { "image_id": "pelipper", "name": "大嘴鷗", "types": ["水", "飛行"] },
+  { "image_id": "maushold", "name": "一家鼠", "types": ["一般"] },
+  { "image_id": "gengar", "name": "耿鬼", "types": ["幽靈", "毒"] },
+  { "image_id": "delphox", "name": "妖火紅狐", "types": ["火", "超能力"] },
+  { "image_id": "farigiraf", "name": "奇麒麟", "types": ["一般", "超能力"] },
+  { "image_id": "archaludon", "name": "鋁鋼橋龍", "types": ["鋼", "龍"] },
+  { "image_id": "venusaur", "name": "妙蛙花", "types": ["草", "毒"] },
+  { "image_id": "froslass", "name": "雪妖女", "types": ["冰", "幽靈"] },
+  { "image_id": "milotic", "name": "美納斯", "types": ["水"] },
+  { "image_id": "gardevoir", "name": "沙奈朵", "types": ["超能力", "妖精"] },
+  { "image_id": "corviknight", "name": "鋼鎧鴉", "types": ["飛行", "鋼"] },
+  { "image_id": "excadrill", "name": "龍頭地鼠", "types": ["地面", "鋼"] },
+  { "image_id": "kommo-o", "name": "杖尾鱗甲龍", "types": ["龍", "格鬥"] },
+  { "image_id": "primarina", "name": "西獅海壬", "types": ["水", "妖精"] },
+  { "image_id": "arcanine-hisuian", "name": "洗翠風速狗", "types": ["火", "岩石"] },
+  { "image_id": "clefable", "name": "皮可西", "types": ["妖精"] },
+  { "image_id": "talonflame", "name": "烈箭鷹", "types": ["火", "飛行"] },
+  { "image_id": "aegislash", "name": "堅盾劍怪", "types": ["鋼", "幽靈"] },
+  { "image_id": "palafin", "name": "海豚俠", "types": ["水"] },
+  { "image_id": "meganium", "name": "大竺葵", "types": ["草"] },
+  { "image_id": "torkoal", "name": "煤炭龜", "types": ["火"] },
+  { "image_id": "politoed", "name": "蚊香蛙皇", "types": ["水"] },
+  { "image_id": "dragapult", "name": "多龍巴魯托", "types": ["龍", "幽靈"] },
+  { "image_id": "glimmora", "name": "晶光花", "types": ["岩石", "毒"] },
+  { "image_id": "sylveon", "name": "仙子伊布", "types": ["妖精"] },
+  { "image_id": "scizor", "name": "巨鉗螳螂", "types": ["蟲", "鋼"] },
+  { "image_id": "gyarados", "name": "暴鯉龍", "types": ["水", "飛行"] },
+  { "image_id": "rotom-heat", "name": "洛托姆（加熱）", "types": ["電", "火"] },
+  { "image_id": "ninetales-alolan", "name": "阿羅拉九尾", "types": ["冰", "妖精"] },
+  { "image_id": "golurk", "name": "泥偶巨人", "types": ["地面", "幽靈"] },
+  { "image_id": "kangaskhan", "name": "袋獸", "types": ["一般"] },
+  { "image_id": "orthworm", "name": "土龍節節", "types": ["鋼"] },
+  { "image_id": "volcarona", "name": "火神蛾", "types": ["蟲", "火"] },
+  { "image_id": "arcanine", "name": "風速狗", "types": ["火"] },
+  { "image_id": "starmie", "name": "寶石海星", "types": ["水", "超能力"] },
+  { "image_id": "typhlosion-hisuian", "name": "洗翠火暴獸", "types": ["火", "幽靈"] },
+  { "image_id": "lucario", "name": "路卡利歐", "types": ["格鬥", "鋼"] },
+  { "image_id": "aggron", "name": "波士可多拉", "types": ["鋼", "岩石"] },
+  { "image_id": "meowscarada", "name": "魔幻假面喵", "types": ["草", "惡"] },
+  { "image_id": "hydreigon", "name": "三首惡龍", "types": ["惡", "龍"] },
+  { "image_id": "blastoise", "name": "水箭龜", "types": ["水"] },
+  { "image_id": "gallade", "name": "艾路雷朵", "types": ["超能力", "格鬥"] },
+  { "image_id": "hatterene", "name": "布莉姆溫", "types": ["超能力", "妖精"] },
+  { "image_id": "drampa", "name": "老翁龍", "types": ["一般", "龍"] },
+  { "image_id": "oranguru", "name": "智揮猩", "types": ["一般", "超能力"] },
+  { "image_id": "tsareena", "name": "甜冷美后", "types": ["草"] },
+  { "image_id": "mamoswine", "name": "象牙豬", "types": ["冰", "地面"] },
+  { "image_id": "mimikyu", "name": "謎擬丘", "types": ["幽靈", "妖精"] },
+  { "image_id": "weavile", "name": "瑪狃拉", "types": ["惡", "冰"] },
+  { "image_id": "scovillain", "name": "辣椒仔", "types": ["草", "火"] },
+  { "image_id": "skarmory", "name": "盔甲鳥", "types": ["鋼", "飛行"] },
+  { "image_id": "vivillon", "name": "彩粉蝶", "types": ["蟲", "飛行"] },
+  { "image_id": "crabominable", "name": "好勝蟹", "types": ["格鬥", "冰"] },
+  { "image_id": "chesnaught", "name": "布里卡隆", "types": ["草", "格鬥"] },
+  { "image_id": "sableye", "name": "勾魂眼", "types": ["惡", "幽靈"] },
+  { "image_id": "klefki", "name": "鑰圈兒", "types": ["鋼", "妖精"] },
+  { "image_id": "raichu", "name": "雷丘", "types": ["電"] },
+  { "image_id": "kleavor", "name": "劈斧螳螂", "types": ["蟲", "岩石"] },
+  { "image_id": "victreebel", "name": "大食花", "types": ["草", "毒"] },
+  { "image_id": "tinkaton", "name": "巨鍛匠", "types": ["妖精", "鋼"] },
+  { "image_id": "azumarill", "name": "瑪力露麗", "types": ["水", "妖精"] },
+  { "image_id": "camerupt", "name": "噴火駝", "types": ["火", "地面"] },
+  { "image_id": "zoroark-hisuian", "name": "洗翠索羅亞克", "types": ["一般", "幽靈"] },
+  { "image_id": "umbreon", "name": "月亮伊布", "types": ["惡"] },
+  { "image_id": "altaria", "name": "七夕青鳥", "types": ["龍", "飛行"] },
+  { "image_id": "empoleon", "name": "帝王拿波", "types": ["水", "鋼"] },
+  { "image_id": "araquanid", "name": "滴蛛霸", "types": ["水", "蟲"] },
+  { "image_id": "meowstic", "name": "超能妙喵", "types": ["超能力"] },
+  { "image_id": "rotom-frost", "name": "洛托姆（結冰）", "types": ["電", "冰"] },
+  { "image_id": "abomasnow", "name": "暴雪王", "types": ["草", "冰"] },
+  { "image_id": "hawlucha", "name": "摔角鷹人", "types": ["格鬥", "飛行"] },
+  { "image_id": "conkeldurr", "name": "修建老匠", "types": ["格鬥"] },
+  { "image_id": "greninja", "name": "甲賀忍蛙", "types": ["水", "惡"] },
+  { "image_id": "manectric", "name": "雷電獸", "types": ["電"] },
+  { "image_id": "lopunny", "name": "長耳兔", "types": ["一般"] },
+  { "image_id": "armarouge", "name": "紅蓮鎧騎", "types": ["火", "超能力"] },
+  { "image_id": "pikachu", "name": "皮卡丘", "types": ["電"] },
+  { "image_id": "feraligatr", "name": "大力鱷", "types": ["水"] },
+  { "image_id": "garganacl", "name": "鹽石巨靈", "types": ["岩石"] },
+  { "image_id": "lycanroc", "name": "鬃岩狼人", "types": ["岩石"] },
+  { "image_id": "quaquaval", "name": "狂歡浪舞鴨", "types": ["水", "格鬥"] },
+  { "image_id": "espathra", "name": "超能豔鴕", "types": ["超能力"] },
+  { "image_id": "skeledirge", "name": "骨紋巨聲鱷", "types": ["火", "幽靈"] },
+  { "image_id": "goodra-hisuian", "name": "洗翠黏美龍", "types": ["鋼", "龍"] },
+  { "image_id": "chandelure", "name": "水晶燈火靈", "types": ["幽靈", "火"] },
+  { "image_id": "decidueye-hisuian", "name": "洗翠狙射樹梟", "types": ["草", "格鬥"] },
+  { "image_id": "vanilluxe", "name": "雙倍多多冰", "types": ["冰"] },
+  { "image_id": "alakazam", "name": "胡地", "types": ["超能力"] },
+  { "image_id": "slowbro", "name": "呆殼獸", "types": ["水", "超能力"] },
+  { "image_id": "ampharos", "name": "電龍", "types": ["電"] },
+  { "image_id": "snorlax", "name": "卡比獸", "types": ["一般"] },
+  { "image_id": "slowbro-galarian", "name": "伽勒爾呆殼獸", "types": ["毒", "超能力"] },
+  { "image_id": "steelix", "name": "大鋼蛇", "types": ["鋼", "地面"] },
+  { "image_id": "ceruledge", "name": "蒼炎刃鬼", "types": ["火", "幽靈"] },
+  { "image_id": "bellibolt", "name": "電肚蛙", "types": ["電"] },
+  { "image_id": "noivern", "name": "音波龍", "types": ["飛行", "龍"] },
+  { "image_id": "salazzle", "name": "焰后蜥", "types": ["毒", "火"] },
+  { "image_id": "heracross", "name": "赫拉克羅斯", "types": ["蟲", "格鬥"] },
+  { "image_id": "glaceon", "name": "冰伊布", "types": ["冰"] },
+  { "image_id": "ditto", "name": "百變怪", "types": ["一般"] },
+  { "image_id": "samurott-hisuian", "name": "洗翠大劍鬼", "types": ["水", "惡"] },
+  { "image_id": "serperior", "name": "君主蛇", "types": ["草"] },
+  { "image_id": "rhyperior", "name": "超甲狂犀", "types": ["地面", "岩石"] },
+  { "image_id": "chimecho", "name": "風鈴鈴", "types": ["超能力"] },
+  { "image_id": "rotom-mow", "name": "洛托姆（切割）", "types": ["電", "草"] },
+  { "image_id": "cofagrigus", "name": "死神棺", "types": ["幽靈"] },
+  { "image_id": "pinsir", "name": "凱羅斯", "types": ["蟲"] },
+  { "image_id": "heliolisk", "name": "光電傘蜥", "types": ["電", "一般"] },
+  { "image_id": "tyrantrum", "name": "怪顎龍", "types": ["岩石", "龍"] },
+  { "image_id": "mudsdale", "name": "重泥挽馬", "types": ["地面"] },
+  { "image_id": "vaporeon", "name": "水伊布", "types": ["水"] },
+  { "image_id": "zoroark", "name": "索羅亞克", "types": ["惡"] },
+  { "image_id": "avalugg", "name": "冰岩怪", "types": ["冰"] },
+  { "image_id": "goodra", "name": "黏美龍", "types": ["龍"] },
+  { "image_id": "krookodile", "name": "流氓鱷", "types": ["地面", "惡"] },
+  { "image_id": "slowking", "name": "呆呆王", "types": ["水", "超能力"] },
+  { "image_id": "houndoom", "name": "黑魯加", "types": ["惡", "火"] },
+  { "image_id": "jolteon", "name": "雷伊布", "types": ["電"] },
+  { "image_id": "leafeon", "name": "葉伊布", "types": ["草"] },
+  { "image_id": "spiritomb", "name": "花岩怪", "types": ["幽靈", "惡"] },
+  { "image_id": "clawitzer", "name": "鋼炮臂蝦", "types": ["水"] },
+  { "image_id": "hippowdon", "name": "河馬獸", "types": ["地面"] },
+  { "image_id": "torterra", "name": "土台龜", "types": ["草", "地面"] },
+  { "image_id": "gliscor", "name": "天蠍王", "types": ["地面", "飛行"] },
+  { "image_id": "trevenant", "name": "朽木妖", "types": ["幽靈", "草"] },
+  { "image_id": "alcremie", "name": "霜奶仙", "types": ["妖精"] },
+  { "image_id": "emboar", "name": "炎武王", "types": ["火", "格鬥"] },
+  { "image_id": "slowking-galarian", "name": "伽勒爾呆呆王", "types": ["毒", "超能力"] },
+  { "image_id": "beartic", "name": "凍原熊", "types": ["冰"] },
+  { "image_id": "simisear", "name": "爆香猴", "types": ["火"] },
+  { "image_id": "machamp", "name": "怪力", "types": ["格鬥"] },
+  { "image_id": "diggersby", "name": "掘地兔", "types": ["一般", "地面"] },
+  { "image_id": "pangoro", "name": "流氓熊貓", "types": ["格鬥", "惡"] },
+  { "image_id": "sharpedo", "name": "巨牙鯊", "types": ["水", "惡"] },
+  { "image_id": "absol", "name": "阿勃梭魯", "types": ["惡"] },
+  { "image_id": "ninetales", "name": "九尾", "types": ["火"] },
+  { "image_id": "florges", "name": "花潔夫人", "types": ["妖精"] },
+  { "image_id": "espeon", "name": "太陽伊布", "types": ["超能力"] },
+  { "image_id": "tauros", "name": "肯泰羅", "types": ["一般"] },
+  { "image_id": "toxapex", "name": "超壞星", "types": ["毒", "水"] },
+  { "image_id": "banette", "name": "詛詛娃娃", "types": ["幽靈"] },
+  { "image_id": "toxicroak", "name": "毒骷蛙", "types": ["毒", "格鬥"] },
+  { "image_id": "medicham", "name": "恰雷姆", "types": ["格鬥", "超能力"] },
+  { "image_id": "dedenne", "name": "咚咚鼠", "types": ["電", "妖精"] },
+  { "image_id": "flareon", "name": "火伊布", "types": ["火"] },
+  { "image_id": "decidueye", "name": "狙射樹梟", "types": ["草", "幽靈"] },
+  { "image_id": "wyrdeer", "name": "詭角鹿", "types": ["一般", "超能力"] },
+  { "image_id": "infernape", "name": "烈焰猴", "types": ["火", "格鬥"] },
+  { "image_id": "flapple", "name": "蘋裹龍", "types": ["草", "龍"] },
+  { "image_id": "morpeko", "name": "莫魯貝可", "types": ["電", "惡"] },
+  { "image_id": "typhlosion", "name": "火暴獸", "types": ["火"] },
+  { "image_id": "hydrapple", "name": "蜜集大蛇", "types": ["草", "龍"] },
+  { "image_id": "raichu-alolan", "name": "阿羅拉雷丘", "types": ["電", "超能力"] },
+  { "image_id": "reuniclus", "name": "人造細胞卵", "types": ["超能力"] },
+  { "image_id": "arbok", "name": "阿柏怪", "types": ["毒"] },
+  { "image_id": "bastiodon", "name": "護城龍", "types": ["岩石", "鋼"] },
+  { "image_id": "rotom-fan", "name": "洛托姆（旋轉）", "types": ["電", "飛行"] },
+  { "image_id": "passimian", "name": "投擲猴", "types": ["格鬥"] },
+  { "image_id": "meowstic-female", "name": "超能妙喵（雌性）", "types": ["超能力"] },
+  { "image_id": "roserade", "name": "羅絲雷朵", "types": ["草", "毒"] },
+  { "image_id": "liepard", "name": "酷豹", "types": ["惡"] },
+  { "image_id": "mr-rime", "name": "踏冰人偶", "types": ["冰", "超能力"] },
+  { "image_id": "pidgeot", "name": "大比鳥", "types": ["一般", "飛行"] },
+  { "image_id": "runerigus", "name": "死神板", "types": ["地面", "幽靈"] },
+  { "image_id": "beedrill", "name": "大針蜂", "types": ["蟲", "毒"] },
+  { "image_id": "audino", "name": "差不多娃娃", "types": ["一般"] },
+  { "image_id": "castform", "name": "飄浮泡泡", "types": ["一般"] },
+  { "image_id": "ariados", "name": "阿利多斯", "types": ["蟲", "毒"] },
+  { "image_id": "aromatisse", "name": "芳香精", "types": ["妖精"] },
+  { "image_id": "emolga", "name": "電飛鼠", "types": ["電", "飛行"] },
+  { "image_id": "rotom", "name": "洛托姆", "types": ["電", "幽靈"] },
+  { "image_id": "aurorus", "name": "冰雪巨龍", "types": ["岩石", "冰"] }
+];
+
+const typeMap = {"一般": "normal", "火": "fire", "水": "water", "草": "grass", "電": "electric", "冰": "ice", "格鬥": "fighting", "毒": "poison", "地面": "ground", "飛行": "flying", "超能力": "psychic", "蟲": "bug", "岩石": "rock", "幽靈": "ghost", "龍": "dragon", "鋼": "steel", "惡": "dark", "妖精": "fairy"};
+const chart = {
+    normal: { rock: 0.5, ghost: 0, steel: 0.5 },
+    fire: { fire: 0.5, water: 0.5, grass: 2, ice: 2, bug: 2, rock: 0.5, dragon: 0.5, steel: 2 },
+    water: { fire: 2, water: 0.5, grass: 0.5, ground: 2, rock: 2, dragon: 0.5 },
+    grass: { fire: 0.5, water: 2, grass: 0.5, poison: 0.5, ground: 2, flying: 0.5, bug: 0.5, rock: 2, dragon: 0.5, steel: 0.5 },
+    electric: { water: 2, grass: 0.5, electric: 0.5, ground: 0, flying: 2, dragon: 0.5 },
+    ice: { fire: 0.5, water: 0.5, grass: 2, ice: 0.5, ground: 2, flying: 2, dragon: 2, steel: 0.5 },
+    fighting: { normal: 2, ice: 2, poison: 0.5, flying: 0.5, psychic: 0.5, bug: 0.5, rock: 2, ghost: 0, dark: 2, steel: 2, fairy: 0.5 },
+    poison: { grass: 2, poison: 0.5, ground: 0.5, rock: 0.5, ghost: 0.5, steel: 0, fairy: 2 },
+    ground: { fire: 2, grass: 0.5, electric: 2, poison: 2, flying: 0, bug: 0.5, rock: 2, steel: 2 },
+    flying: { grass: 2, electric: 0.5, fighting: 2, bug: 2, rock: 0.5, steel: 0.5 },
+    psychic: { fighting: 2, poison: 2, psychic: 0.5, dark: 0, steel: 0.5 },
+    bug: { fire: 0.5, grass: 2, fighting: 0.5, poison: 0.5, flying: 0.5, psychic: 2, ghost: 0.5, dark: 2, steel: 0.5, fairy: 0.5 },
+    rock: { fire: 2, ice: 2, fighting: 0.5, ground: 0.5, flying: 2, bug: 2, steel: 0.5 },
+    ghost: { normal: 0, psychic: 2, ghost: 2, dark: 0.5 },
+    dragon: { dragon: 2, steel: 0.5, fairy: 0 },
+    dark: { fighting: 0.5, psychic: 2, ghost: 2, dark: 0.5, fairy: 0.5 },
+    steel: { fire: 0.5, water: 0.5, electric: 0.5, ice: 2, rock: 2, steel: 0.5, fairy: 2 },
+    fairy: { fire: 0.5, fighting: 2, poison: 0.5, dragon: 2, dark: 2, steel: 0.5 }
+};
+
+let sections = { team1: [], team2: [], list: [] };
+let activeTarget = 'team1';
+let activeTypeFilters = [];
+const highlightedTypes = new Set();
+const collapsedPanels = { list: false };
+
+// 宣告 DOM 元素
+const analysisLayout = document.getElementById('analysis-layout');
+const teamResizer = document.getElementById('team-resizer');
+
+function getEffectiveness(targetTypes) {
+    const results = {};
+    Object.keys(typeMap).forEach(t => results[t] = 1);
+    targetTypes.forEach(targetChinese => {
+        const targetEng = typeMap[targetChinese];
+        Object.keys(chart).forEach(attackerEng => {
+            const multiplier = chart[attackerEng][targetEng] !== undefined ? chart[attackerEng][targetEng] : 1;
+            const attackerChinese = Object.keys(typeMap).find(key => typeMap[key] === attackerEng);
+            results[attackerChinese] *= multiplier;
+        });
+    });
+    return results;
+}
+
+function setActiveTarget(target) {
+    activeTarget = target;
+    document.querySelectorAll('.analysis-panel').forEach(p => p.classList.toggle('active', p.dataset.target === target));
+}
+
+function togglePanelCollapse(panelId) {
+    collapsedPanels[panelId] = !collapsedPanels[panelId];
+    syncCollapsedPanels();
+}
+
+function syncCollapsedPanels() {
+    Object.entries(collapsedPanels).forEach(([panelId, isCollapsed]) => {
+        const panel = document.querySelector(`.analysis-panel.${panelId}`);
+        if (panel) panel.classList.toggle('collapsed', isCollapsed);
+    });
+}
+
+function addMember(pokemon) {
+    const member = { ...pokemon };
+
+    if (activeTarget === 'list') {
+        sections.list.push(member);
+        renderAllSections();
+        return;
+    }
+
+    if (sections[activeTarget].length < 6) {
+        sections[activeTarget].push(member);
+        renderAllSections();
+        return;
+    }
+
+    const otherTeam = activeTarget === 'team1' ? 'team2' : 'team1';
+    if (sections[otherTeam].length < 6) {
+        sections[otherTeam].push(member);
+        renderAllSections();
+        return;
+    }
+
+    sections.list.push(member);
+    renderAllSections();
+}
+
+function clearSection(id) {
+    sections[id] = [];
+    renderAllSections();
+}
+
+function toggleTypeFilter(typeName) {
+    const idx = activeTypeFilters.indexOf(typeName);
+    if (idx !== -1) activeTypeFilters.splice(idx, 1);
+    else {
+        if (activeTypeFilters.length >= 2) activeTypeFilters.shift();
+        activeTypeFilters.push(typeName);
+    }
+    renderTypeFilters();
+    renderPokemonPool();
+}
+
+function resetTypeFilters() {
+    activeTypeFilters = [];
+    renderTypeFilters();
+    renderPokemonPool();
+}
+
+function toggleTypeHighlight(typeName) {
+    if (highlightedTypes.has(typeName)) highlightedTypes.delete(typeName);
+    else highlightedTypes.add(typeName);
+    syncHighlightedTypes();
+    syncCollapsedPanels();
+}
+
+function clearHighlightedTypes() {
+    highlightedTypes.clear();
+    syncHighlightedTypes();
+}
+
+function addSequentialToList() {
+    const input = document.getElementById('batch-add-count');
+    const count = Math.max(1, parseInt(input?.value || '50', 10) || 50);
+    const itemsToAdd = pokemonData.slice(0, count).map(p => ({ ...p }));
+    sections.list.push(...itemsToAdd);
+    renderAllSections();
+}
+
+function syncHighlightedTypes() {
+    document.querySelectorAll('.type-badge[data-type]').forEach(el => {
+        el.classList.toggle('type-highlighted', highlightedTypes.has(el.dataset.type));
+    });
+}
+
+function renderTypeFilters() {
+    const container = document.getElementById('type-filter-container');
+    const types = Object.keys(typeMap);
+    container.innerHTML = types.map(t => `
+        <button class="type-filter-btn type-${typeMap[t]} ${activeTypeFilters.includes(t) ? 'active' : ''}" 
+                onclick="toggleTypeFilter('${t}')">${t}</button>
+    `).join('');
+}
+
+function renderPokemonPool() {
+    const container = document.getElementById('pool-container');
+    const filtered = pokemonData.filter(p => activeTypeFilters.every(f => p.types.includes(f)));
+    container.innerHTML = filtered.map(p => `
+        <div class="pool-item" onclick="addMember(${JSON.stringify(p).replace(/"/g, '&quot;')})">
+            <img src="https://img.pokemondb.net/sprites/home/normal/${p.image_id}.png">
+            <div>${p.name}</div>
+        </div>
+    `).join('');
+}
+
+								 
+															
+								 
+					 
+ 
+
+								  
+							 
+					 
+ 
+
+						   
+																	   
+																					   
+	   
+ 
+
+function renderAllSections() {
+    ['team1', 'team2', 'list'].forEach(id => {
+        const container = document.getElementById(id + '-container');
+        const data = sections[id];
+		
+        if (data.length === 0) {
+            container.innerHTML = `<div class="panel-empty">${id === 'list' ? '點擊列表區塊後，從下方加入寶可夢到列表' : '點擊區塊後從下方加入寶可夢'}</div>`;
+        } else {
+            container.innerHTML = data.map((p, index) => {
+                const eff = getEffectiveness(p.types);
+                const groups = { '4X': [], '2X': [], '0.5X': [], '0.25X': [], '0X': [] };
+                for (const t in eff) {
+                    if (eff[t] === 4) groups['4X'].push(t);
+                    else if (eff[t] === 2) groups['2X'].push(t);
+                    else if (eff[t] === 0.5) groups['0.5X'].push(t);
+                    else if (eff[t] === 0.25) groups['0.25X'].push(t);
+                    else if (eff[t] === 0) groups['0X'].push(t);			
+                }
+                let effHtml = '<div class="eff-group">';
+				for (const label in groups) {
+					if (groups[label].length > 0) {
+						// 動態生成對應的背景 Class (例如 4X -> bg-4x, 0.5X -> bg-05x)
+						const bgClass = "bg-" + label.replace('.', '').toLowerCase();
+						
+						effHtml += `<div class="eff-box ${bgClass}">
+										<span class="eff-label">${label}</span>
+										<div class="eff-content">`;
+						
+						groups[label].forEach(t => {
+							effHtml += `<span class="type-badge type-${typeMap[t]}" data-type="${t}" onclick="event.stopPropagation(); toggleTypeHighlight('${t}')">${t}</span>`;
+						});
+						
+						effHtml += '</div></div>';
+					}
+				}
+                effHtml += '</div>';
+
+                return `
+                    <div class="selected-row">
+                        <img src="https://img.pokemondb.net/sprites/home/normal/${p.image_id}.png">
+                        <div>
+                            <div class="pokemon-name">${p.name}</div>
+                            <div>${p.types.map(t => `<span class="type-badge type-${typeMap[t]}" data-type="${t}" onclick="event.stopPropagation(); toggleTypeHighlight(\'${t}\')">${t}</span>`).join('')}</div>
+                        </div>
+                        <div>${effHtml}</div>
+                        <div class="btn-panel-action btn-danger" style="border:none" onclick="event.stopPropagation(); sections['${id}'].splice(${index},1); renderAllSections()">×</div>
+                    </div>
+                `;
+            }).join('');
+        }
+        document.getElementById(id + '-meta').textContent = id === 'list' ? `${data.length}` : `${data.length} / 6`;
+    });
+    syncHighlightedTypes();
+}
+
+// 拖曳寬度功能
+if (analysisLayout && teamResizer) {
+    let isDragging = false;
+    teamResizer.addEventListener('mousedown', () => { isDragging = true; document.body.style.cursor = 'col-resize'; });
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const rect = analysisLayout.getBoundingClientRect();
+        const offset = e.clientX - rect.left;
+        const percentage = (offset / rect.width) * 100;
+        if (percentage > 20 && percentage < 80) {
+            analysisLayout.style.setProperty('--team1-width', `${percentage}fr`);
+            analysisLayout.style.setProperty('--team2-width', `${100 - percentage}fr`);
+        }
+    });
+    window.addEventListener('mouseup', () => { isDragging = false; document.body.style.cursor = 'default'; });
+}
+
+// 初始化
+document.addEventListener('DOMContentLoaded', () => {
+    renderTypeFilters();
+    renderPokemonPool();
+    renderAllSections();
+    syncCollapsedPanels();
+    setActiveTarget('team1');
+});
+</script>
+</body>
+</html>
